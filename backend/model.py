@@ -1,10 +1,11 @@
 import json
 import os
 import re
-import google.generativeai as genai
+import requests
 from pydantic import BaseModel, ValidationError
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+OLLAMA_API_URL = "http://localhost:11434/api/generate"
+MODEL_NAME = "mistral"
 
 class SAMPLEOutput(BaseModel):
     """Structured clinical summary for handoff to ground physician."""
@@ -72,8 +73,8 @@ def parse_json_robust(response_text: str) -> dict | None:
 def get_completion(user_message: str, system_prompt: str = None, retry_count: int = 0) -> dict:
     """
     Unified model interface for getting completions with robust JSON handling.
-    CRITICAL: This single function abstracts the model call so we can swap
-    Gemini → local Gemma later by just changing this implementation.
+    NOW USING LOCAL GEMMA VIA OLLAMA (was Gemini API).
+    Swapped in Milestone 3 — same function, different backend.
 
     Args:
         user_message: The user's input (may be in any language)
@@ -84,7 +85,6 @@ def get_completion(user_message: str, system_prompt: str = None, retry_count: in
         dict with 'success', 'translation', and 'sample' keys
     """
     MAX_RETRIES = 2
-    model = genai.GenerativeModel("gemini-1.5-flash")
 
     full_prompt = f"""{system_prompt or ''}
 
@@ -105,8 +105,13 @@ Respond with ONLY a valid JSON object (no markdown, no extra text, no explanatio
 """
 
     try:
-        response = model.generate_content(full_prompt)
-        response_text = response.text.strip()
+        response = requests.post(
+            OLLAMA_API_URL,
+            json={"model": MODEL_NAME, "prompt": full_prompt, "stream": False},
+            timeout=60
+        )
+        response.raise_for_status()
+        response_text = response.json().get("response", "").strip()
 
         # Try to parse JSON robustly
         data = parse_json_robust(response_text)
