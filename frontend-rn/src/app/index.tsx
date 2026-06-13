@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 import * as Speech from 'expo-speech';
 import * as Clipboard from 'expo-clipboard';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   useAudioRecorder,
   useAudioRecorderState,
@@ -23,12 +24,18 @@ import {
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
-// Override at runtime without editing code: set EXPO_PUBLIC_API_HOST in the env
-// (e.g. `EXPO_PUBLIC_API_HOST=http://10.0.0.5:8000 npm start`). Falls back to the
-// LAN IP used during development so a fresh clone still runs.
-const API_HOST = process.env.EXPO_PUBLIC_API_HOST ?? 'http://192.168.1.120:8000';
-const TRANSLATE_URL = `${API_HOST}/translate`;
-const TRANSCRIBE_URL = `${API_HOST}/transcribe`;
+// Default backend host: EXPO_PUBLIC_API_HOST env override → dev LAN IP. The user
+// can also change it at runtime in-app (persisted via AsyncStorage), so a stale
+// IP on a phone demo is a 5-second fix instead of an Expo restart.
+const DEFAULT_API_HOST = process.env.EXPO_PUBLIC_API_HOST ?? 'http://192.168.1.120:8000';
+const HOST_STORAGE_KEY = 'apiHost';
+
+// Tolerate bare IPs and trailing slashes the user types into the settings field.
+function normalizeHost(raw: string): string {
+  let h = raw.trim().replace(/\/+$/, '');
+  if (h && !/^https?:\/\//i.test(h)) h = `http://${h}`;
+  return h;
+}
 
 interface Result {
   success: boolean;
@@ -86,6 +93,12 @@ export default function TranslatorScreen() {
   const [connError, setConnError] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Runtime-editable backend host
+  const [apiHost, setApiHost] = useState(DEFAULT_API_HOST);
+  const [hostDraft, setHostDraft] = useState(DEFAULT_API_HOST);
+  const [showSettings, setShowSettings] = useState(false);
+  const [hostStatus, setHostStatus] = useState<'unknown' | 'ok' | 'fail'>('unknown');
+
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
 
@@ -100,6 +113,35 @@ export default function TranslatorScreen() {
     })();
   }, []);
 
+  // Hydrate a previously-saved host so the user only sets it once per device
+  useEffect(() => {
+    AsyncStorage.getItem(HOST_STORAGE_KEY).then((saved) => {
+      if (saved) {
+        setApiHost(saved);
+        setHostDraft(saved);
+      }
+    });
+  }, []);
+
+  const testHost = async (h: string = apiHost) => {
+    setHostStatus('unknown');
+    try {
+      const r = await fetch(`${h}/health`);
+      setHostStatus(r.ok ? 'ok' : 'fail');
+    } catch {
+      setHostStatus('fail');
+    }
+  };
+
+  const saveHost = async () => {
+    const h = normalizeHost(hostDraft);
+    setApiHost(h);
+    setHostDraft(h);
+    setConnError(false);
+    await AsyncStorage.setItem(HOST_STORAGE_KEY, h);
+    testHost(h);
+  };
+
   const handleTranslate = async () => {
     if (!message.trim()) {
       Alert.alert('Error', 'Please enter a message');
@@ -109,7 +151,7 @@ export default function TranslatorScreen() {
     setLoading(true);
     setLoadingStage('Translating & extracting…');
     try {
-      const response = await axios.post<Result>(TRANSLATE_URL, { message });
+      const response = await axios.post<Result>(`${apiHost}/translate`, { message });
       setResult(response.data);
     } catch (error) {
       setConnError(true);
@@ -147,7 +189,7 @@ export default function TranslatorScreen() {
       // RN multipart upload — let fetch set the boundary, don't set Content-Type
       const formData = new FormData();
       formData.append('audio', { uri, name: 'recording.m4a', type: 'audio/m4a' } as any);
-      const res = await fetch(TRANSCRIBE_URL, { method: 'POST', body: formData });
+      const res = await fetch(`${apiHost}/transcribe`, { method: 'POST', body: formData });
       const data: Result = await res.json();
       setResult(data);
       if (!data.success) {
@@ -262,8 +304,8 @@ export default function TranslatorScreen() {
             <View style={styles.connBanner}>
               <ThemedText style={styles.connBannerTitle}>Can't reach the backend</ThemedText>
               <ThemedText style={styles.connBannerText}>
-                Tried {API_HOST}. Make sure the FastAPI server is running and the device is on the
-                same network.
+                Tried {apiHost}. Make sure the FastAPI server is running and the device is on the
+                same network — or change the address under ⚙︎ Backend below.
               </ThemedText>
             </View>
           )}
@@ -313,6 +355,55 @@ export default function TranslatorScreen() {
           {result && !result.success && (
             <ThemedText style={styles.error}>Error: {result.error}</ThemedText>
           )}
+
+          {/* Backend host — editable at runtime so a stale IP never breaks a demo */}
+          <View style={styles.settingsBlock}>
+            <TouchableOpacity
+              style={styles.settingsToggle}
+              onPress={() => setShowSettings((v) => !v)}
+            >
+              <ThemedText style={styles.settingsToggleText}>
+                ⚙︎ Backend: {apiHost.replace(/^https?:\/\//, '')}
+              </ThemedText>
+              <ThemedText style={styles.settingsChevron}>{showSettings ? '▲' : '▼'}</ThemedText>
+            </TouchableOpacity>
+            {showSettings && (
+              <View style={styles.settingsBody}>
+                <TextInput
+                  style={styles.hostInput}
+                  value={hostDraft}
+                  onChangeText={setHostDraft}
+                  placeholder="http://192.168.1.120:8000"
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  editable={!loading}
+                />
+                <View style={styles.settingsActions}>
+                  <TouchableOpacity style={styles.settingsButton} onPress={saveHost} disabled={loading}>
+                    <ThemedText style={styles.settingsButtonText}>Save</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.settingsButtonOutline}
+                    onPress={() => testHost()}
+                    disabled={loading}
+                  >
+                    <ThemedText style={styles.settingsButtonOutlineText}>Test</ThemedText>
+                  </TouchableOpacity>
+                  <ThemedText
+                    style={[
+                      styles.hostStatusText,
+                      hostStatus === 'ok' && styles.hostStatusOk,
+                      hostStatus === 'fail' && styles.hostStatusFail,
+                    ]}
+                  >
+                    {hostStatus === 'ok' ? '✓ connected' : hostStatus === 'fail' ? '✗ no response' : ''}
+                  </ThemedText>
+                </View>
+              </View>
+            )}
+          </View>
 
           {/* Scope boundary — designed in deliberately */}
           <ThemedText style={styles.disclaimer}>
@@ -437,4 +528,38 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
   },
+  settingsBlock: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#ccc', paddingTop: 12 },
+  settingsToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  settingsToggleText: { fontSize: 13, opacity: 0.7 },
+  settingsChevron: { fontSize: 11, opacity: 0.5 },
+  settingsBody: { marginTop: 10 },
+  hostInput: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    fontSize: 14,
+    color: '#333',
+  },
+  settingsActions: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  settingsButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+  },
+  settingsButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  settingsButtonOutline: {
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    marginLeft: 8,
+  },
+  settingsButtonOutlineText: { color: '#007AFF', fontSize: 14, fontWeight: '600' },
+  hostStatusText: { fontSize: 13, marginLeft: 12, opacity: 0.7 },
+  hostStatusOk: { color: '#2E7D32', opacity: 1 },
+  hostStatusFail: { color: '#C0271D', opacity: 1 },
 });
