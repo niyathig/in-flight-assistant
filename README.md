@@ -7,43 +7,50 @@ A portfolio project demonstrating end-to-end product thinking for an offline, on
 - Extracts clinical information into a structured SAMPLE summary (Symptoms, Allergies, Medications, Past history, Last intake, Events)
 - Does NOT diagnose or recommend clinical actions (intentional product boundary)
 
-**Current phase:** Milestone 1 — text-based translation + SAMPLE extraction using Gemini API.
+**Current phase:** Milestone 3 — local Ollama/Mistral backend (offline-capable).
 
 ## Tech Stack
 
 - **Backend:** Python, FastAPI
 - **Frontend:** HTML, vanilla JavaScript
-- **Model:** Google Gemini (swap to local Ollama/Gemma at Milestone 3)
-- **Model abstraction:** Single `get_completion()` function (easy API → local swap)
+- **Model:** Local Ollama/Mistral (fully offline, no API keys needed)
+- **Model abstraction:** Single `get_completion()` function (swapped Gemini → Ollama at Milestone 3)
 
 ## Setup
 
 ### Prerequisites
 - Python 3.9+
-- Gemini API key (free at https://aistudio.google.com/apikey)
+- Ollama (https://ollama.ai) with Mistral model pulled
 
 ### Installation
 
-1. **Clone and navigate:**
+1. **Install Ollama:**
+   ```bash
+   # Download and install from https://ollama.ai
+   # Then pull the model:
+   ollama pull mistral
+   ```
+
+2. **Start Ollama server (runs in background on port 11434):**
+   ```bash
+   ollama serve
+   ```
+
+3. **Clone and navigate:**
    ```bash
    git clone https://github.com/niyathig/in-flight-assistant.git
    cd in-flight-assistant
    ```
 
-2. **Create Python virtual environment:**
+4. **Create Python virtual environment:**
    ```bash
    python3 -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. **Install dependencies:**
+5. **Install dependencies:**
    ```bash
    pip install -r backend/requirements.txt
-   ```
-
-4. **Create `.env` file in project root:**
-   ```
-   GEMINI_API_KEY=your_actual_gemini_key_here
    ```
 
 ### Running
@@ -73,9 +80,9 @@ python -m http.server 5000
 
 ## Project Roadmap
 
-- **Milestone 1 ✅ (Done):** Text loop end-to-end
-- **Milestone 2:** Reliable JSON output (Gemini → local Gemma swap preparation)
-- **Milestone 3:** Swap API → local Ollama/Gemma
+- **Milestone 1 ✅ (Done):** Text loop end-to-end with Gemini API
+- **Milestone 2 ✅ (Done):** Reliable JSON output with retry logic and error handling
+- **Milestone 3 ✅ (Done):** Swap API → local Ollama/Mistral (fully offline)
 - **Milestone 4:** Browser voice (STT/TTS) + UI polish
 
 ## Architecture
@@ -96,11 +103,12 @@ frontend/
 ## Key Design Decision
 
 The `get_completion()` function in `backend/model.py` abstracts the model call. This lets us:
-- Start with Gemini API today (free, works immediately)
-- Swap to local Gemma in 2-3 lines at Milestone 3 (no refactor needed)
+- Start with Gemini API (Milestone 1-2) ✅
+- Swap to local Ollama/Mistral (Milestone 3) ✅ — **Now fully offline, no API keys needed**
 
 ## Notes
 
-- Mac M2, 8GB RAM target (tight memory — Gemma will be Q4 quantized)
+- Mac M2, 8GB RAM target (Mistral 7B runs smoothly on modest hardware)
 - Voice and UI polish are Milestone 4
 - Product thesis: translate only, extract facts, no clinical recommendations
+- **Milestone 3 complete:** Fully offline, no API calls or keys needed
