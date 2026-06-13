@@ -133,8 +133,14 @@ Respond with ONLY a valid JSON object (no markdown, no extra text, no explanatio
         try:
             sample = SAMPLEOutput(**data)
         except ValidationError:
-            # Partial validation failed, but we got some data
-            sample = SAMPLEOutput(**{k: data.get(k, "") for k in SAMPLEOutput.model_fields})
+            # Partial validation failed; convert arrays to comma-separated strings
+            cleaned = {}
+            for k in SAMPLEOutput.model_fields:
+                v = data.get(k, "")
+                if isinstance(v, list):
+                    v = ", ".join(str(x) for x in v)
+                cleaned[k] = v or "not specified"
+            sample = SAMPLEOutput(**cleaned)
 
         return {
             "success": True,
