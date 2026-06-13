@@ -1,11 +1,15 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
-from dotenv import load_dotenv
 from model import get_completion
-
-load_dotenv()
 
 app = FastAPI(title="In-Flight First-Response Assistant")
 
@@ -33,9 +37,12 @@ def translate(request: TranslationRequest):
     Output: English translation + structured SAMPLE JSON
     """
     if not request.message or not request.message.strip():
+        from model import SAMPLEOutput
         return {
             "success": False,
-            "error": "Message cannot be empty"
+            "error": "Message cannot be empty",
+            "translation": "",
+            "sample": SAMPLEOutput().model_dump()
         }
 
     system_prompt = """You are a medical translation assistant for in-flight emergencies.
