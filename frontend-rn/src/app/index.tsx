@@ -10,6 +10,7 @@ import {
   Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as Speech from 'expo-speech';
 import * as Clipboard from 'expo-clipboard';
@@ -99,6 +100,7 @@ export default function TranslatorScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [hostStatus, setHostStatus] = useState<'unknown' | 'ok' | 'fail'>('unknown');
 
+  const router = useRouter();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
 
@@ -246,6 +248,12 @@ export default function TranslatorScreen() {
             <ThemedText style={styles.subtitle}>
               Speak or type in any language — it auto-detects.
             </ThemedText>
+            <TouchableOpacity
+              style={styles.guideLink}
+              onPress={() => router.push('/first-response')}
+            >
+              <ThemedText style={styles.guideLinkText}>📋 First Response Guide</ThemedText>
+            </TouchableOpacity>
           </View>
 
           {/* Voice input */}
@@ -450,6 +458,16 @@ const styles = StyleSheet.create({
   header: { marginBottom: 20 },
   title: { fontSize: 26, fontWeight: 'bold', marginBottom: 6, lineHeight: 30 },
   subtitle: { fontSize: 14, opacity: 0.7 },
+  guideLink: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  guideLinkText: { color: '#007AFF', fontSize: 14, fontWeight: '600' },
   section: { marginBottom: 20 },
   sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12 },
   subsectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 12 },
